@@ -133,6 +133,12 @@
                 keys.up = true;
                 ball.jumping = true;
                 ball.dy = ball.jumpForce;
+                // Add horizontal momentum to jump when moving
+                if (keys.left) {
+                    ball.dx = -8;
+                } else if (keys.right) {
+                    ball.dx = 8;
+                }
                 createJumpParticles();
             }
         });
@@ -149,10 +155,16 @@
             e.preventDefault();
             touchStartX = e.touches[0].clientX;
             
-            // Springen bei Touch
+            // Springen bei Touch mit Richtung
             if (!ball.jumping) {
                 ball.dy = ball.jumpForce;
                 ball.jumping = true;
+                // Add horizontal momentum based on current movement
+                if (keys.left) {
+                    ball.dx = -8;
+                } else if (keys.right) {
+                    ball.dx = 8;
+                }
                 createJumpParticles();
             }
         });
