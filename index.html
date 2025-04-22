@@ -105,6 +105,8 @@
         const platformHeight = 20;
         const platformGap = 170;      // Increased from 150
         const platformHorizontalVariance = 150;  // Reduced from 200 for more predictable jumps
+        const movingPlatformSpeed = 2;
+        const movingPlatformRange = 100;
         
         // Partikel für Effekte
         const particles = [];
@@ -229,13 +231,23 @@
                 newY = lastPlatform.y - platformGap;
             }
             
+            // 30% chance for a moving platform
+            const isMoving = Math.random() < 0.3;
+            const moveType = Math.random() < 0.5 ? 'horizontal' : 'vertical';
+            
             platforms.push({
                 x: newX,
                 y: newY,
                 width: platformWidth,
                 height: platformHeight,
                 color: getRandomColor(),
-                scored: false // Flag, um zu verfolgen, ob diese Plattform bereits Punkte gegeben hat
+                scored: false,
+                // New movement properties
+                isMoving,
+                moveType,
+                startX: newX,
+                startY: newY,
+                moveTime: 0
             });
         }
         
@@ -439,15 +451,19 @@
             let onPlatform = false;
             platforms.forEach(platform => {
                 if (ball.dy > 0 && 
-                    ball.y + ball.radius > platform.y - 5 &&    // Added 5px tolerance
-                    ball.y + ball.radius < platform.y + platform.height + 5 && // Added 5px tolerance
-                    ball.x > platform.x - 5 &&                  // Added side tolerance
-                    ball.x < platform.x + platform.width + 5) { // Added side tolerance
+                    ball.y + ball.radius > platform.y - 5 &&
+                    ball.y + ball.radius < platform.y + platform.height + 5 && 
+                    ball.x > platform.x - 5 &&
+                    ball.x < platform.x + platform.width + 5) {
                     
                     ball.y = platform.y - ball.radius;
                     ball.dy = 0;
                     ball.jumping = false;
-                    onPlatform = true;
+                    
+                    // Move ball with platform
+                    if (platform.isMoving && platform.moveType === 'horizontal') {
+                        ball.x += Math.cos(platform.moveTime) * movingPlatformSpeed;
+                    }
                 }
             });
             
@@ -496,6 +512,21 @@
                 platforms.shift();
                 createPlatform();
             }
+        }
+        
+        // Update der Plattformen
+        function updatePlatforms() {
+            platforms.forEach(platform => {
+                if (platform.isMoving) {
+                    platform.moveTime += 0.02;
+                    
+                    if (platform.moveType === 'horizontal') {
+                        platform.x = platform.startX + Math.sin(platform.moveTime) * movingPlatformRange;
+                    } else {
+                        platform.y = platform.startY + Math.sin(platform.moveTime) * (movingPlatformRange / 2);
+                    }
+                }
+            });
         }
         
         // Update der Partikel
@@ -558,6 +589,7 @@
             if (gameActive) {
                 updateBall();
                 updateParticles();
+                updatePlatforms();
             }
             
             // Zeichnen
