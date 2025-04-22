@@ -90,9 +90,9 @@
             radius: 20,
             dx: 0,
             dy: 0,
-            gravity: 0.5,
-            jumpForce: -12,
-            friction: 0.8,
+            gravity: 0.4,     // Reduced from 0.5
+            jumpForce: -15,   // Increased from -12
+            friction: 0.85,   // Slightly increased from 0.8
             color: '#FFF',
             jumping: false,
             trail: [],
@@ -101,10 +101,10 @@
         
         // Plattform Eigenschaften
         const platforms = [];
-        const platformWidth = 100;
+        const platformWidth = 120;    // Increased from 100
         const platformHeight = 20;
-        const platformGap = 150; // Verringerter Abstand für bessere Erreichbarkeit
-        const platformHorizontalVariance = 200; // Horizontale Varianz für Plattformen
+        const platformGap = 170;      // Increased from 150
+        const platformHorizontalVariance = 150;  // Reduced from 200 for more predictable jumps
         
         // Partikel für Effekte
         const particles = [];
@@ -389,11 +389,11 @@
         
         // Update der Ball-Position
         function updateBall() {
-            // Horizontal bewegen
+            // Horizontal bewegen with better acceleration
             if (keys.left) {
-                ball.dx -= 1;
+                ball.dx -= 1.2;  // Increased from 1
             } else if (keys.right) {
-                ball.dx += 1;
+                ball.dx += 1.2;  // Increased from 1
             }
             
             // Physik anwenden
@@ -401,8 +401,8 @@
             ball.dy += ball.gravity;
             
             // Geschwindigkeit limitieren
-            ball.dx = Math.max(-10, Math.min(10, ball.dx));
-            ball.dy = Math.max(-20, Math.min(15, ball.dy));
+            ball.dx = Math.max(-8, Math.min(8, ball.dx));  // Changed from -10/10
+            ball.dy = Math.max(-15, Math.min(15, ball.dy)); // Changed from -20/15
             
             // Position aktualisieren
             ball.x += ball.dx;
@@ -439,10 +439,10 @@
             let onPlatform = false;
             platforms.forEach(platform => {
                 if (ball.dy > 0 && 
-                    ball.y + ball.radius > platform.y && 
-                    ball.y + ball.radius < platform.y + platform.height &&
-                    ball.x > platform.x && 
-                    ball.x < platform.x + platform.width) {
+                    ball.y + ball.radius > platform.y - 5 &&    // Added 5px tolerance
+                    ball.y + ball.radius < platform.y + platform.height + 5 && // Added 5px tolerance
+                    ball.x > platform.x - 5 &&                  // Added side tolerance
+                    ball.x < platform.x + platform.width + 5) { // Added side tolerance
                     
                     ball.y = platform.y - ball.radius;
                     ball.dy = 0;
