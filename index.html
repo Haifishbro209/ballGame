@@ -1,1 +1,571 @@
-.
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kugel Plattform-Spiel</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1e3c72, #2a5298);
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        .game-container {
+            position: relative;
+            width: 800px;
+            margin: 20px auto;
+        }
+        .ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 48px;
+            text-align: center;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 20px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="ui">
+            Höhe: <span id="score">0</span>m
+        </div>
+        <div class="game-over" id="gameOver">
+            Game Over<br>
+            <span id="finalScore"></span><br>
+            <button id="restartButton">Neustart</button>
+        </div>
+    </div>
+
+    <script>
+        // Canvas und Kontext
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Spielvariablen
+        let score = 0;
+        let maxHeight = 0;
+        let gameActive = true;
+        
+        // Ball Eigenschaften
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 20,
+            dx: 0,
+            dy: 0,
+            gravity: 0.5,
+            jumpForce: -12,
+            friction: 0.8,
+            color: '#FFF',
+            jumping: false,
+            trail: [],
+            totalHeight: 0 // Gesamthöhe für Punktzahl
+        };
+        
+        // Plattform Eigenschaften
+        const platforms = [];
+        const platformWidth = 100;
+        const platformHeight = 20;
+        const platformGap = 150; // Verringerter Abstand für bessere Erreichbarkeit
+        const platformHorizontalVariance = 200; // Horizontale Varianz für Plattformen
+        
+        // Partikel für Effekte
+        const particles = [];
+        
+        // Bilder für Hintergrund
+        const backgroundStars = [];
+        
+        // Spielsteuerung
+        const keys = {
+            left: false,
+            right: false,
+            up: false
+        };
+        
+        // Score Element
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+        const restartButton = document.getElementById('restartButton');
+        
+        // Event Listener für Tasten
+        window.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+            if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && !ball.jumping) {
+                keys.up = true;
+                ball.jumping = true;
+                ball.dy = ball.jumpForce;
+                createJumpParticles();
+            }
+        });
+        
+        window.addEventListener('keyup', function(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+            if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') keys.up = false;
+        });
+        
+        // Touch-Steuerung für mobile Geräte
+        let touchStartX = 0;
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            touchStartX = e.touches[0].clientX;
+            
+            // Springen bei Touch
+            if (!ball.jumping) {
+                ball.dy = ball.jumpForce;
+                ball.jumping = true;
+                createJumpParticles();
+            }
+        });
+        
+        canvas.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            if (touchX < touchStartX - 30) {
+                keys.left = true;
+                keys.right = false;
+            } else if (touchX > touchStartX + 30) {
+                keys.right = true;
+                keys.left = false;
+            } else {
+                keys.left = keys.right = false;
+            }
+        });
+        
+        canvas.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            keys.left = keys.right = false;
+        });
+        
+        // Neustart-Button
+        restartButton.addEventListener('click', restartGame);
+        
+        // Initiale Plattformen erstellen
+        function initPlatforms() {
+            platforms.length = 0;
+            
+            // Start-Plattform
+            platforms.push({
+                x: canvas.width / 2 - platformWidth / 2,
+                y: canvas.height - 100,
+                width: platformWidth,
+                height: platformHeight,
+                color: '#4CAF50'
+            });
+            
+            // Weitere Plattformen
+            for (let i = 0; i < 10; i++) {
+                createPlatform();
+            }
+        }
+        
+        // Neue Plattform erstellen
+        function createPlatform() {
+            const lastPlatform = platforms[platforms.length - 1];
+            let newX, newY;
+            
+            if (platforms.length === 0) {
+                newX = Math.random() * (canvas.width - platformWidth);
+                newY = canvas.height - 100;
+            } else {
+                // Position basierend auf der letzten Plattform
+                // Horizontale Position mit begrenzter Varianz, um Erreichbarkeit zu gewährleisten
+                const minX = Math.max(0, lastPlatform.x - platformHorizontalVariance);
+                const maxX = Math.min(canvas.width - platformWidth, lastPlatform.x + platformHorizontalVariance);
+                newX = minX + Math.random() * (maxX - minX);
+                
+                // Vertikale Position mit festem Abstand
+                newY = lastPlatform.y - platformGap;
+            }
+            
+            platforms.push({
+                x: newX,
+                y: newY,
+                width: platformWidth,
+                height: platformHeight,
+                color: getRandomColor(),
+                scored: false // Flag, um zu verfolgen, ob diese Plattform bereits Punkte gegeben hat
+            });
+        }
+        
+        // Zufällige Farbe erzeugen
+        function getRandomColor() {
+            const colors = ['#4CAF50', '#2196F3', '#FFC107', '#E91E63', '#9C27B0'];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+        
+        // Sternen-Hintergrund erstellen
+        function createStars() {
+            for (let i = 0; i < 100; i++) {
+                backgroundStars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    radius: Math.random() * 2 + 1,
+                    alpha: Math.random() * 0.8 + 0.2,
+                    speed: Math.random() * 0.3 + 0.1
+                });
+            }
+        }
+        
+        // Sprung-Partikel erstellen
+        function createJumpParticles() {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: ball.x,
+                    y: ball.y + ball.radius,
+                    radius: Math.random() * 3 + 2,
+                    color: ball.color,
+                    alpha: 1,
+                    dx: (Math.random() - 0.5) * 6,
+                    dy: Math.random() * 4 + 2,
+                    life: 30
+                });
+            }
+        }
+        
+        // Ball zeichnen
+        function drawBall() {
+            // Ball-Schatten
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y + 5, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fill();
+            
+            // Ball-Trail
+            for (let i = 0; i < ball.trail.length; i++) {
+                const t = ball.trail[i];
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${t.alpha})`;
+                ctx.fill();
+            }
+            
+            // Ball selbst
+            const gradient = ctx.createRadialGradient(
+                ball.x - ball.radius / 3, ball.y - ball.radius / 3,
+                ball.radius / 10,
+                ball.x, ball.y,
+                ball.radius
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(1, 'rgba(200, 200, 255, 1)');
+            
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            // Glanz-Effekt
+            ctx.beginPath();
+            ctx.arc(ball.x - ball.radius / 3, ball.y - ball.radius / 3, ball.radius / 2, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fill();
+        }
+        
+        // Plattformen zeichnen
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                // Plattform-Schatten
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fillRect(platform.x, platform.y + 5, platform.width, platform.height);
+                
+                // Plattform mit Gradient
+                const gradient = ctx.createLinearGradient(
+                    platform.x, platform.y,
+                    platform.x, platform.y + platform.height
+                );
+                gradient.addColorStop(0, platform.color);
+                gradient.addColorStop(1, adjustColor(platform.color, -30));
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+                
+                // Highlights oben
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fillRect(platform.x, platform.y, platform.width, 3);
+            });
+        }
+        
+        // Farbe anpassen (heller/dunkler)
+        function adjustColor(color, amount) {
+            const colorObj = hexToRgb(color);
+            return `rgb(${Math.max(0, Math.min(255, colorObj.r + amount))}, 
+                      ${Math.max(0, Math.min(255, colorObj.g + amount))}, 
+                      ${Math.max(0, Math.min(255, colorObj.b + amount))})`;
+        }
+        
+        // Hex zu RGB Konverter
+        function hexToRgb(hex) {
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+            
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : {r: 0, g: 0, b: 0};
+        }
+        
+        // Hintergrund mit Sternen zeichnen
+        function drawBackground() {
+            // Hintergrund-Gradient
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            bgGradient.addColorStop(0, '#0a1a3f');
+            bgGradient.addColorStop(1, '#1e3c72');
+            
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Sterne zeichnen
+            backgroundStars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+                ctx.fill();
+            });
+        }
+        
+        // Partikel zeichnen
+        function drawParticles() {
+            particles.forEach(particle => {
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${particle.alpha})`;
+                ctx.fill();
+            });
+        }
+        
+        // Update der Ball-Position
+        function updateBall() {
+            // Horizontal bewegen
+            if (keys.left) {
+                ball.dx -= 1;
+            } else if (keys.right) {
+                ball.dx += 1;
+            }
+            
+            // Physik anwenden
+            ball.dx *= ball.friction;
+            ball.dy += ball.gravity;
+            
+            // Geschwindigkeit limitieren
+            ball.dx = Math.max(-10, Math.min(10, ball.dx));
+            ball.dy = Math.max(-20, Math.min(15, ball.dy));
+            
+            // Position aktualisieren
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+            
+            // Links/Rechts am Rand abprallen
+            if (ball.x - ball.radius < 0) {
+                ball.x = ball.radius;
+                ball.dx *= -0.5;
+            } else if (ball.x + ball.radius > canvas.width) {
+                ball.x = canvas.width - ball.radius;
+                ball.dx *= -0.5;
+            }
+            
+            // Trail hinzufügen
+            ball.trail.push({
+                x: ball.x,
+                y: ball.y,
+                radius: ball.radius - 5,
+                alpha: 0.5
+            });
+            
+            // Trail limitieren
+            if (ball.trail.length > 5) {
+                ball.trail.shift();
+            }
+            
+            // Trail aktualisieren
+            for (let i = 0; i < ball.trail.length; i++) {
+                ball.trail[i].alpha -= 0.1;
+            }
+            
+            // Kollision mit Plattformen prüfen
+            let onPlatform = false;
+            platforms.forEach(platform => {
+                if (ball.dy > 0 && 
+                    ball.y + ball.radius > platform.y && 
+                    ball.y + ball.radius < platform.y + platform.height &&
+                    ball.x > platform.x && 
+                    ball.x < platform.x + platform.width) {
+                    
+                    ball.y = platform.y - ball.radius;
+                    ball.dy = 0;
+                    ball.jumping = false;
+                    onPlatform = true;
+                }
+            });
+            
+            // Unten rausfallen = Game Over
+            if (ball.y - ball.radius > canvas.height) {
+                gameOver();
+            }
+            
+            // Bildschirm nach oben scrollen, wenn Ball hoch genug
+            if (ball.y < canvas.height / 2) {
+                const diff = canvas.height / 2 - ball.y;
+                ball.y += diff;
+                
+                // Gesamthöhe für Punktzahl aktualisieren
+                ball.totalHeight += diff;
+                
+                // Punkte nur bei steigender Höhe aktualisieren
+                const newScore = Math.floor(ball.totalHeight / 100);
+                if (newScore > score) {
+                    score = newScore;
+                    scoreElement.textContent = score;
+                }
+                
+                // Plattformen nach unten bewegen
+                platforms.forEach(platform => {
+                    platform.y += diff;
+                });
+                
+                // Sterne langsamer nach unten bewegen
+                backgroundStars.forEach(star => {
+                    star.y += diff * star.speed;
+                    if (star.y > canvas.height) {
+                        star.y = 0;
+                        star.x = Math.random() * canvas.width;
+                    }
+                });
+                
+                // Partikel nach unten bewegen
+                particles.forEach(particle => {
+                    particle.y += diff;
+                });
+            }
+            
+            // Alte Plattformen entfernen und neue erstellen
+            if (platforms.length > 0 && platforms[0].y > canvas.height) {
+                platforms.shift();
+                createPlatform();
+            }
+        }
+        
+        // Update der Partikel
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.dx;
+                p.y += p.dy;
+                p.alpha -= 0.02;
+                p.life--;
+                
+                if (p.alpha <= 0 || p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Game Over Funktion
+        function gameOver() {
+            gameActive = false;
+            gameOverElement.style.display = 'block';
+            finalScoreElement.textContent = `Erreichte Höhe: ${score}m`;
+        }
+        
+        // Spiel neu starten
+        function restartGame() {
+            gameActive = true;
+            gameOverElement.style.display = 'none';
+            score = 0;
+            scoreElement.textContent = score;
+            
+            // Ball zurücksetzen
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.dx = 0;
+            ball.dy = 0;
+            ball.jumping = false;
+            ball.trail = [];
+            ball.totalHeight = 0;
+            
+            // Plattformen neu erstellen
+            initPlatforms();
+            
+            // Animation wieder starten
+            if (!animationId) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+        
+        // Hauptspiel-Loop
+        let animationId;
+        function gameLoop() {
+            // Canvas leeren
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Hintergrund zeichnen
+            drawBackground();
+            
+            // Aktualisierungen
+            if (gameActive) {
+                updateBall();
+                updateParticles();
+            }
+            
+            // Zeichnen
+            drawPlatforms();
+            drawParticles();
+            drawBall();
+            
+            // Nächstes Frame anfordern
+            animationId = requestAnimationFrame(gameLoop);
+        }
+        
+        // Spiel initialisieren
+        function init() {
+            createStars();
+            initPlatforms();
+            gameLoop();
+        }
+        
+        // Spiel starten
+        init();
+    </script>
+</body>
+</html>
